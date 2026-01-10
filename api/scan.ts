@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Connection, PublicKey, Transaction, TransactionInstruction, clusterApiUrl } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Configuração de Headers
@@ -13,6 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const BLINK_HOST = `https://${req.headers.host}`; 
   const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
+  
+  // USA O TEU RPC DA HELIUS (Isto resolve o "Execution Failed")
+  const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
 
   // 1. O QUE APARECE NO TWITTER (GET)
   if (req.method === 'GET') {
@@ -38,39 +41,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const { address } = req.query;
       const body = req.body || {};
-      const userAccount = body.account; // A carteira de quem está a clicar (vem do Dialect)
+      const userAccount = body.account; // A carteira de quem está a clicar
 
       if (!userAccount) {
-        return res.status(400).json({ error: "Conta não fornecida pelo Dialect" });
+        return res.status(400).json({ error: "Conta não fornecida" });
       }
 
-      // --- CRIAÇÃO DA TRANSAÇÃO FANTASMA (Para corrigir o 'Signing Failed') ---
-      const connection = new Connection(clusterApiUrl('mainnet-beta'));
+      // --- CONEXÃO ESTÁVEL VIA HELIUS ---
+      const connection = new Connection(RPC_URL);
       const userPubkey = new PublicKey(userAccount);
       
+      // Criar transação
       const transaction = new Transaction();
       
-      // Adicionar uma instrução Memo (Inofensiva, custo quase zero, só para validar a ação)
+      // Instrução Memo (Inofensiva)
       transaction.add(
         new TransactionInstruction({
           keys: [{ pubkey: userPubkey, isSigner: true, isWritable: true }],
-          data: Buffer.from("Shenlong Audit Verify", "utf-8"),
+          data: Buffer.from("Shenlong Verify", "utf-8"),
           programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcQb"),
         })
       );
 
       transaction.feePayer = userPubkey;
+      
+      // Buscar o Blockhash recente (Aqui é onde o RPC Público falhava)
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
 
-      // Serializar a transação
+      // Serializar
       const payload = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
 
-      // --- RESPOSTA COM A TRANSAÇÃO E OS BOTÕES FINAIS ---
+      // --- RESPOSTA FINAL ---
       return res.json({
         type: "transaction",
-        transaction: payload, // <--- ISTO É O QUE FALTAVA!
-        message: `Auditoria concluída para ${address}`,
+        transaction: payload,
+        message: `Auditoria concluída.`,
         links: {
           next: {
             type: "inline",
@@ -99,8 +105,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     } catch (error) {
-      console.error(error);
-      return res.status(500).json({ error: "Erro ao processar auditoria" });
+      console.error("Erro ao criar transação:", error);
+      return res.status(500).json({ error: "Falha na rede Solana. Tente novamente." });
     }
   }
 }
