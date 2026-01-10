@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  // 1. Configuração de CORS e Headers (Essencial para o Dialect aceitar)
+  // 1. Configuração de Headers (CORS e Versão do Action)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding');
   res.setHeader('X-Blockchain-Ids', 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp');
+  res.setHeader('X-Action-Version', '1'); // <--- A LINHA QUE FALTAVA PARA O ERRO VERMELHO
 
   // 2. Responder rápido a pedidos de verificação (OPTIONS)
   if (req.method === 'OPTIONS') {
@@ -13,15 +14,15 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 3. Definição das URLs
-  // O link deste próprio Blink
   const BLINK_HOST = `https://${req.headers.host}`; 
-  // O link do teu site principal (Usa o da Vercel para garantir que não há bloqueios de imagem)
+  // O link do teu site principal (para onde o usuário vai depois)
   const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
   // 4. Lógica do GET (O que aparece no feed do Twitter)
   if (req.method === 'GET') {
     return res.json({
-      icon: `${MAIN_SITE_URL}/favicon.png`, 
+      // Usamos um logo público fiável para testar se a imagem aparece
+      icon: "https://cryptologos.cc/logos/solana-sol-logo.png", 
       title: "Shenlong Wallet Audit",
       description: "Verifica se tens SOL 'preso' em contas lixo. Digita o endereço abaixo.",
       label: "Escanear Carteira",
@@ -49,12 +50,12 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.json({
       type: "transaction",
-      message: `Análise concluída para a carteira.`,
+      message: `Análise concluída.`,
       links: {
         next: {
           type: "inline",
           action: {
-            icon: `${MAIN_SITE_URL}/favicon.png`,
+            icon: "https://cryptologos.cc/logos/solana-sol-logo.png",
             title: "Relatório de Auditoria",
             description: "Encontrámos ineficiências. Para recuperar o SOL ou converter em $SHEN, usa a App Segura.",
             label: "Ações",
