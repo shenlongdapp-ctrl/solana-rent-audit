@@ -19,6 +19,7 @@
     "@solana/wallet-adapter-wallets": "^0.19.37",
     "@solana/web3.js": "^1.98.4",
     "@tailwindcss/postcss": "^4.1.18",
+    "@vercel/node": "^5.5.16",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
