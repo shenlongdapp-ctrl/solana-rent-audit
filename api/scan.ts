@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-// 🟢 O TEU RPC DA HELIUS (Essencial para não falhar)
+// O TEU RPC DA HELIUS
 const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
+// O LINK DO TEU SITE NA VERCEL (Onde o utilizador vai parar)
 const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CONFIGURAÇÃO CORS (Para o Dialect aceitar)
+  // CONFIGURAÇÃO CORS E HEADERS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding');
@@ -36,31 +37,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // 2. POST: O CÉREBRO (Scan Real + Transação de Validação)
+  // 2. POST: O CÉREBRO
   if (req.method === 'POST') {
     try {
-      const targetAddress = req.query.address as string; // A carteira que queremos escanear
+      const targetAddress = req.query.address as string; 
       const body = req.body || {};
-      const signerAccount = body.account; // A carteira que está a clicar no botão (assinante)
+      const signerAccount = body.account; 
 
       if (!signerAccount) {
         return res.status(400).json({ error: "Conta não fornecida" });
       }
 
-      // --- PASSO A: CONEXÃO ROBUSTA ---
       const connection = new Connection(RPC_URL, 'confirmed');
       const signerPubkey = new PublicKey(signerAccount);
 
-      // --- PASSO B: LÓGICA DE SCAN REAL (Recuperada) ---
-      // Vamos ver se a carteira alvo tem lixo, para dar uma mensagem personalizada.
+      // --- LÓGICA DE SCAN ---
       let rentMessage = "Análise concluída.";
       let hasJunk = false;
 
       try {
-        // Se o utilizador escreveu um endereço válido, vamos escanear
         const targetPubkey = new PublicKey(targetAddress);
-        
-        // Buscar contas de token
         const accounts = await connection.getParsedTokenAccountsByOwner(targetPubkey, {
           programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
         });
@@ -71,7 +67,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         for (const acc of accounts.value) {
           const balance = acc.account.data.parsed.info.tokenAmount.uiAmount;
           const lamports = acc.account.lamports;
-          // Lógica de lixo: Saldo 0 mas tem rent preso
           if (balance === 0 && lamports > 0) {
             totalRent += lamports;
             junkCount++;
@@ -81,44 +76,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const rentInSol = totalRent / LAMPORTS_PER_SOL;
 
         if (junkCount > 0) {
-          rentMessage = `🚨 Encontrámos ${rentInSol.toFixed(4)} SOL presos em ${junkCount} contas lixo!`;
+          rentMessage = `🚨 Encontrámos ${rentInSol.toFixed(4)} SOL presos em ${junkCount} contas! [Clica aqui para recuperar](${MAIN_SITE_URL}/dashboard?autoScan=${targetAddress})`;
           hasJunk = true;
         } else {
-          rentMessage = "✅ Carteira limpa! Nenhum lixo detetado.";
+          rentMessage = `✅ Carteira limpa! Mas podes [comprar $SHEN aqui](${MAIN_SITE_URL}/presale).`;
         }
 
       } catch (e) {
-        console.log("Erro no scan (provavelmente endereço inválido), prosseguindo...", e);
-        rentMessage = "Não foi possível ler o endereço alvo, mas podes conectar a app.";
+        rentMessage = "Erro ao ler endereço. Verifique se está correto.";
       }
 
-      // --- PASSO C: TRANSAÇÃO DE VALIDAÇÃO (Self-Transfer 0 SOL) ---
-      // Esta é a técnica mais segura para evitar "Execution Failed".
-      // O utilizador transfere 0 SOL para si mesmo. Custo: 0.000005 SOL (taxa de rede).
-      // Isso prova que ele é real e desbloqueia o Blink.
-      
+      // --- TRANSAÇÃO (Self-Transfer 0 SOL) ---
       const transaction = new Transaction();
-      
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: signerPubkey,
-          toPubkey: signerPubkey, // Para ele mesmo (seguro)
-          lamports: 0, // Valor zero
+          toPubkey: signerPubkey,
+          lamports: 0, 
         })
       );
 
       transaction.feePayer = signerPubkey;
-      const { blockhash } = await connection.getLatestBlockhash('finalized'); // 'finalized' é mais seguro contra erros
+      // MUDANÇA IMPORTANTE: Usar 'confirmed' em vez de 'finalized' para ser mais rápido e evitar erros
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
       transaction.recentBlockhash = blockhash;
 
-      // Serializar
       const payload = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
 
-      // --- PASSO D: RESPOSTA FINAL ---
       return res.json({
         type: "transaction",
         transaction: payload,
-        message: rentMessage, // A mensagem real do scan!
+        message: rentMessage,
         links: {
           next: {
             type: "inline",
@@ -147,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     } catch (error) {
-      console.error("Erro CRÍTICO:", error);
+      console.error("Erro:", error);
       return res.status(500).json({ error: "Falha técnica. Tente novamente." });
     }
   }
