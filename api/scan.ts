@@ -1,8 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+
+// 🟢 O TEU RPC DA HELIUS (Essencial para não falhar)
+const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
+const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configuração de Headers
+  // CONFIGURAÇÃO CORS (Para o Dialect aceitar)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding');
@@ -12,84 +16,122 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const BLINK_HOST = `https://${req.headers.host}`; 
-  const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
-  
-  // USA O TEU RPC DA HELIUS (Isto resolve o "Execution Failed")
-  const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
 
-  // 1. O QUE APARECE NO TWITTER (GET)
+  // 1. GET: A MONTRA (O que aparece no Twitter)
   if (req.method === 'GET') {
     return res.json({
       icon: "https://cryptologos.cc/logos/solana-sol-logo.png", 
       title: "Shenlong Wallet Audit",
-      description: "Verifica se tens SOL 'preso'. Cola a tua wallet abaixo.",
+      description: "Verifica agora quanto SOL tens perdido em contas de lixo (Rent).",
       label: "Escanear Carteira",
       links: {
         actions: [
           {
-            label: "Verificar Agora",
+            label: "Verificar Grátis",
             href: `${BLINK_HOST}/api/scan?address={address}`,
-            parameters: [{ name: "address", label: "Endereço da Carteira (Ex: G47...)", required: true }]
+            parameters: [{ name: "address", label: "Cola o teu endereço Solana...", required: true }]
           }
         ]
       }
     });
   }
 
-  // 2. O QUE ACONTECE AO CLICAR (POST)
+  // 2. POST: O CÉREBRO (Scan Real + Transação de Validação)
   if (req.method === 'POST') {
     try {
-      const { address } = req.query;
+      const targetAddress = req.query.address as string; // A carteira que queremos escanear
       const body = req.body || {};
-      const userAccount = body.account; // A carteira de quem está a clicar
+      const signerAccount = body.account; // A carteira que está a clicar no botão (assinante)
 
-      if (!userAccount) {
+      if (!signerAccount) {
         return res.status(400).json({ error: "Conta não fornecida" });
       }
 
-      // --- CONEXÃO ESTÁVEL VIA HELIUS ---
-      const connection = new Connection(RPC_URL);
-      const userPubkey = new PublicKey(userAccount);
+      // --- PASSO A: CONEXÃO ROBUSTA ---
+      const connection = new Connection(RPC_URL, 'confirmed');
+      const signerPubkey = new PublicKey(signerAccount);
+
+      // --- PASSO B: LÓGICA DE SCAN REAL (Recuperada) ---
+      // Vamos ver se a carteira alvo tem lixo, para dar uma mensagem personalizada.
+      let rentMessage = "Análise concluída.";
+      let hasJunk = false;
+
+      try {
+        // Se o utilizador escreveu um endereço válido, vamos escanear
+        const targetPubkey = new PublicKey(targetAddress);
+        
+        // Buscar contas de token
+        const accounts = await connection.getParsedTokenAccountsByOwner(targetPubkey, {
+          programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+        });
+
+        let totalRent = 0;
+        let junkCount = 0;
+
+        for (const acc of accounts.value) {
+          const balance = acc.account.data.parsed.info.tokenAmount.uiAmount;
+          const lamports = acc.account.lamports;
+          // Lógica de lixo: Saldo 0 mas tem rent preso
+          if (balance === 0 && lamports > 0) {
+            totalRent += lamports;
+            junkCount++;
+          }
+        }
+
+        const rentInSol = totalRent / LAMPORTS_PER_SOL;
+
+        if (junkCount > 0) {
+          rentMessage = `🚨 Encontrámos ${rentInSol.toFixed(4)} SOL presos em ${junkCount} contas lixo!`;
+          hasJunk = true;
+        } else {
+          rentMessage = "✅ Carteira limpa! Nenhum lixo detetado.";
+        }
+
+      } catch (e) {
+        console.log("Erro no scan (provavelmente endereço inválido), prosseguindo...", e);
+        rentMessage = "Não foi possível ler o endereço alvo, mas podes conectar a app.";
+      }
+
+      // --- PASSO C: TRANSAÇÃO DE VALIDAÇÃO (Self-Transfer 0 SOL) ---
+      // Esta é a técnica mais segura para evitar "Execution Failed".
+      // O utilizador transfere 0 SOL para si mesmo. Custo: 0.000005 SOL (taxa de rede).
+      // Isso prova que ele é real e desbloqueia o Blink.
       
-      // Criar transação
       const transaction = new Transaction();
       
-      // Instrução Memo (Inofensiva)
       transaction.add(
-        new TransactionInstruction({
-          keys: [{ pubkey: userPubkey, isSigner: true, isWritable: true }],
-          data: Buffer.from("Shenlong Verify", "utf-8"),
-          programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcQb"),
+        SystemProgram.transfer({
+          fromPubkey: signerPubkey,
+          toPubkey: signerPubkey, // Para ele mesmo (seguro)
+          lamports: 0, // Valor zero
         })
       );
 
-      transaction.feePayer = userPubkey;
-      
-      // Buscar o Blockhash recente (Aqui é onde o RPC Público falhava)
-      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.feePayer = signerPubkey;
+      const { blockhash } = await connection.getLatestBlockhash('finalized'); // 'finalized' é mais seguro contra erros
       transaction.recentBlockhash = blockhash;
 
       // Serializar
       const payload = transaction.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64');
 
-      // --- RESPOSTA FINAL ---
+      // --- PASSO D: RESPOSTA FINAL ---
       return res.json({
         type: "transaction",
         transaction: payload,
-        message: `Auditoria concluída.`,
+        message: rentMessage, // A mensagem real do scan!
         links: {
           next: {
             type: "inline",
             action: {
-              icon: "https://cryptologos.cc/logos/solana-sol-logo.png",
-              title: "⚠️ Ineficiências Detetadas!",
-              description: "Encontrámos Rent por reclamar. Escolhe uma ação:",
+              icon: hasJunk ? "https://cryptologos.cc/logos/solana-sol-logo.png" : "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Green_tick.svg/1024px-Green_tick.svg.png",
+              title: hasJunk ? "⚠️ RECUPERAÇÃO DISPONÍVEL" : "AUDITORIA FINALIZADA",
+              description: rentMessage,
               label: "Ações",
               links: {
                 actions: [
                   {
-                    label: "💰 Recuperar SOL (Ir para Site)",
-                    href: `${MAIN_SITE_URL}/dashboard?autoScan=${address}`,
+                    label: "💰 Recuperar SOL (App)",
+                    href: `${MAIN_SITE_URL}/dashboard?autoScan=${targetAddress}`,
                     type: "external"
                   },
                   {
@@ -105,8 +147,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     } catch (error) {
-      console.error("Erro ao criar transação:", error);
-      return res.status(500).json({ error: "Falha na rede Solana. Tente novamente." });
+      console.error("Erro CRÍTICO:", error);
+      return res.status(500).json({ error: "Falha técnica. Tente novamente." });
     }
   }
 }
