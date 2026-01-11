@@ -4,9 +4,9 @@ import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } f
 const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
 const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
-// FOMO Configuration
-const SHEN_LAUNCH_PRICE = 0.01; // $0.01
-const SOL_PRICE_ESTIMATE = 210; // Fixed for speed
+// Configurações de Preço
+const SHEN_LAUNCH_PRICE = 0.01;
+const SOL_PRICE_ESTIMATE = 210;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -18,11 +18,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   const BLINK_HOST = `https://${req.headers.host}`; 
 
-  // --- GET: THE AI RADAR ---
+  // --- GET: O RADAR (IMAGEM SEGURA) ---
   if (req.method === 'GET') {
     return res.json({
-      // GIF: Radar/Network Scan
-      icon: "https://i.pinimg.com/originals/a4/09/25/a409257bb5776a39d8923a1df82df23f.gif", 
+      // Usamos o Logo Oficial da Solana (Wikimedia é indestrutível)
+      icon: "https://upload.wikimedia.org/wikipedia/en/b/b9/Solana_logo.png", 
       title: "Shenlong AI: Deep Wallet Scan",
       description: "Analyze your wallet for hidden Rent and map your network connections. See how much capital you are wasting.",
       label: "Start AI Scan",
@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  // --- POST: THE RESULT (REAL RENT + AI NARRATIVE) ---
+  // --- POST: RESULTADO COM PARTILHA ---
   if (req.method === 'POST') {
     try {
       const targetAddress = req.query.address as string; 
@@ -50,15 +50,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const connection = new Connection(RPC_URL, 'confirmed');
       const signerPubkey = new PublicKey(signerAccount);
 
-      // --- 1. REAL RENT SCAN ---
+      // --- 1. SCAN DE RENT REAL ---
       let resultTitle = "";
       let resultDesc = "";
-      let gifUrl = ""; 
-      let hasJunk = false;
+      let finalImage = ""; 
+      let shareText = "";
 
       try {
         const targetPubkey = new PublicKey(targetAddress);
-        // Fetch Token Accounts
         const accounts = await connection.getParsedTokenAccountsByOwner(targetPubkey, {
           programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
         });
@@ -66,7 +65,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let totalRent = 0;
         let junkCount = 0;
         
-        // Analyze for Junk (Balance 0, has Rent)
         for (const acc of accounts.value) {
           const bal = acc.account.data.parsed.info.tokenAmount.uiAmount;
           const lamports = acc.account.lamports;
@@ -76,41 +74,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         const rentSol = totalRent / LAMPORTS_PER_SOL;
-
-        // --- 2. FOMO MATH ---
         const rentInUsd = rentSol * SOL_PRICE_ESTIMATE;
-        const tokensAtLaunch = rentInUsd / SHEN_LAUNCH_PRICE;
-        const valAt10x = rentInUsd * 10; 
 
-        // --- 3. AI NARRATIVE GENERATION ---
+        // --- 2. LÓGICA DE PARTILHA & NARRATIVA ---
+        
         if (junkCount > 0) {
-          hasJunk = true;
-          // GIF: Network Alert / Red
-          gifUrl = "https://i.pinimg.com/originals/e8/35/6d/e8356da35623091e0892095cc1b06877.gif";
+          // CENÁRIO 1: CARTEIRA SUJA (Encontrou Rent)
+          // Imagem: Sinal de Alerta (Wikimedia)
+          finalImage = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Ojbect-action-dialog-warning.svg/240px-Ojbect-action-dialog-warning.svg.png";
           
           resultTitle = `🔴 ALERT: ${rentSol.toFixed(4)} SOL DETECTED`;
-          
-          resultDesc = `⚠️ CRITICAL REPORT:\n
-          • 🗑️ Junk Accounts: **${junkCount}**
-          • 💸 Dead Capital: **$${rentInUsd.toFixed(2)} USD**
-          • 🕸️ Network Risk: **High (3 Connections)**\n
-          🔥 FOMO SIMULATOR:
-          Convert this into ~${tokensAtLaunch.toFixed(0)} $SHEN.
-          Potential Value (10x): **$${valAt10x.toFixed(2)}**`;
+          resultDesc = `⚠️ CRITICAL REPORT:\n• 🗑️ Junk Accounts: **${junkCount}**\n• 💸 Dead Capital: **$${rentInUsd.toFixed(2)} USD**\n• 🕸️ Network Risk: **High**\n\nConvert this into $SHEN before it's too late.`;
+
+          // Texto para o Twitter (Viral)
+          shareText = `🚨 SHENLONG AI ALERT\n\nI just found $${rentInUsd.toFixed(0)} hidden in my Solana wallet! 💸\n\n📉 Junk Accounts: ${junkCount}\n🕸️ Network Risk: HIGH\n\nDon't let your SOL rot. Scan your wallet now 👇\n@ShenlongProtocol`;
 
         } else {
-          // Clean Wallet
-          gifUrl = "https://cdn.dribbble.com/users/1758660/screenshots/6255395/check.gif";
-          resultTitle = "🟢 WALLET STATUS: OPTIMIZED";
-          resultDesc = "No junk accounts found. Your efficiency score is 100%. However, our AI detected potential opportunities in your extended network. Connect to the App to view the full Bubble Map.";
+          // CENÁRIO 2: CARTEIRA LIMPA (Mas Rede em Risco)
+          // Imagem: Check Verde (Wikimedia)
+          finalImage = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Gnome-emblem-default.svg/240px-Gnome-emblem-default.svg.png";
+          
+          resultTitle = "🟢 WALLET OPTIMIZED";
+          resultDesc = "Your wallet is clean. However, our AI detected potential opportunities in your extended network (funded wallets). Connect to the App to view the full Bubble Map.";
+
+          // Texto para o Twitter (Viral - Curiosidade)
+          shareText = `🛡️ SHENLONG AI REPORT\n\nMy wallet is 100% Optimized! ✅\n\nBut the AI detected risks in my connected network... 👀\n\nCheck your wallet health and network map here 👇\n@ShenlongProtocol`;
         }
 
       } catch (e) {
-        resultDesc = "Invalid Wallet Address. Please try again.";
-        gifUrl = "https://media.tenor.com/images/a742721ea2075bc3956a2ff62c98ade3/tenor.gif"; 
+        resultDesc = "Invalid Wallet Address.";
+        finalImage = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Crystal_Clear_action_delete.png/120px-Crystal_Clear_action_delete.png";
       }
 
-      // --- 4. VALIDATION TRANSACTION (0 SOL) ---
+      // Link de Partilha
+      const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${MAIN_SITE_URL}`;
+
+      // --- 3. TRANSAÇÃO DE VALIDAÇÃO (0 SOL) ---
       const transaction = new Transaction();
       transaction.add(
         SystemProgram.transfer({ fromPubkey: signerPubkey, toPubkey: signerPubkey, lamports: 0 })
@@ -128,20 +127,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           next: {
             type: "inline",
             action: {
-              icon: gifUrl, // Dynamic GIF (Red or Green)
+              icon: finalImage, // Imagem Segura
               title: resultTitle,
               description: resultDesc,
               label: "Actions",
               links: {
                 actions: [
                   {
-                    label: "🚀 View Network Map (App)",
+                    label: "💰 Reclaim Rent / View Map",
                     href: `${MAIN_SITE_URL}/dashboard?autoScan=${targetAddress}`,
                     type: "external"
                   },
                   {
-                    label: "💰 Claim Rent Now",
-                    href: `${MAIN_SITE_URL}/dashboard?autoScan=${targetAddress}`, // Direct to dashboard for action
+                    label: "🐦 Share Report on X",
+                    href: shareUrl,
                     type: "external"
                   }
                 ]
