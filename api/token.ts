@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
 
-const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
+// SEGURANÇA: Agora lê a chave do Vercel. Fallback para RPC público se falhar.
+const RPC_URL = process.env.HELIUS_RPC_URL || "https://api.mainnet-beta.solana.com";
 const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
 // Rent per Account (Solana Standard)
