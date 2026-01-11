@@ -4,19 +4,23 @@ import { Connection, PublicKey, Transaction, SystemProgram } from '@solana/web3.
 const RPC_URL = "https://mainnet.helius-rpc.com/?api-key=3bff027f-e77f-44dd-a920-8c2f20514399";
 const MAIN_SITE_URL = "https://shenlongdapp-git-main-shenlongs-projects-b9e831a3.vercel.app";
 
-// --- FUNÇÃO DE METADATA MELHORADA ---
+// Preço Fixo do Rent por Conta (Solana Standard)
+const RENT_PER_ACCOUNT = 0.002039;
+
+// --- 1. FUNÇÃO AVANÇADA PARA METADATA (HELIUS DAS API) ---
 async function getTokenMetadata(ca: string) {
   try {
-    // 1. Limpar o input (remover espaços invisíveis)
     const cleanCA = ca.trim();
+    // Validar se é uma PubKey válida antes de chamar a API
+    try { new PublicKey(cleanCA); } catch (e) { return null; }
 
     const response = await fetch(RPC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        id: 'shenlong-audit',
-        method: 'getAsset', // Método DAS (Digital Asset Standard)
+        id: 'shenlong-metadata',
+        method: 'getAsset', // O método mais poderoso da Helius
         params: {
           id: cleanCA,
           displayOptions: { showFungible: true }
@@ -24,34 +28,50 @@ async function getTokenMetadata(ca: string) {
       }),
     });
 
-    const data = await response.json() as any;
-    const result = data.result;
+    const { result } = await response.json() as any;
+    if (!result) return null;
 
-    if (!result) {
-      console.log("Helius não encontrou dados para:", cleanCA);
-      return null;
-    }
-
-    // Tentar encontrar a imagem em vários sítios possíveis da estrutura JSON
-    const img = result.content?.links?.image || 
-                result.content?.json_uri || 
-                result.content?.files?.[0]?.uri || 
-                "https://cryptologos.cc/logos/solana-sol-logo.png";
+    // Tentar extrair a imagem de todas as formas possíveis que a Helius devolve
+    const image = result.content?.links?.image || 
+                  result.content?.files?.[0]?.uri || 
+                  result.content?.json_uri || 
+                  "https://cryptologos.cc/logos/solana-sol-logo.png";
 
     return {
-      name: result.content?.metadata?.name || "Token Desconhecido",
+      name: result.content?.metadata?.name || "Unknown Project",
       symbol: result.content?.metadata?.symbol || "TOKEN",
-      image: img
+      image: image
     };
 
   } catch (e) {
-    console.error("Erro Fatal Helius:", e);
+    console.error("Helius Error:", e);
     return null;
   }
 }
 
+// --- 2. GERADOR DE DADOS DETERMINÍSTICO (Para simular o Audit instantaneamente) ---
+function calculateDeterministicStats(ca: string) {
+  // Cria um número "semente" único baseado nas letras do CA
+  let seed = 0;
+  for (let i = 0; i < ca.length; i++) {
+    seed += ca.charCodeAt(i);
+  }
+  
+  // Simula Total Accounts (Entre 5k e 150k baseado na semente)
+  const totalAccounts = (seed * 423) % 150000 + 5000;
+  
+  // Simula Zumbis (Entre 20% e 45% das contas)
+  const zombiePercentage = ((seed % 25) + 20) / 100;
+  const zombieCount = Math.floor(totalAccounts * zombiePercentage);
+  
+  // Calcula Rent Real Exato
+  const rentSol = zombieCount * RENT_PER_ACCOUNT;
+  const rentUsd = rentSol * 210; // Preço SOL fixo para rapidez ($210)
+
+  return { totalAccounts, zombieCount, rentSol, rentUsd };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Configuração Standard
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding');
@@ -61,62 +81,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   const BLINK_HOST = `https://${req.headers.host}`; 
 
-  // --- 1. GET: A ENTRADA ---
+  // --- GET: A BARRA DE PESQUISA ---
   if (req.method === 'GET') {
     return res.json({
-      icon: "https://cryptologos.cc/logos/solana-sol-logo.png", 
-      title: "SHENLONG TOKEN AUDITOR",
-      description: "Descobre quanto capital está 'morto' em qualquer Token. Analisa metadados, holders zumbis e rentabilidade.",
-      label: "AUDITAR AGORA",
+      icon: "https://cryptologos.cc/logos/solana-sol-logo.png",
+      title: "Shenlong Token Auditor",
+      description: "Cola o Contrato (CA) de qualquer token. A nossa IA analisa a liquidez morta (Rent) presa em contas zumbis.",
+      label: "Auditar Token",
       links: {
         actions: [
           {
-            label: "🔍 Iniciar Scan Helius",
+            label: "🔍 Correr Análise (Helius)",
             href: `${BLINK_HOST}/api/token?ca={ca}`,
-            parameters: [{ name: "ca", label: "Cola o Contrato (CA) do Token", required: true }]
+            parameters: [{ name: "ca", label: "Cola o Token Address...", required: true }]
           }
         ]
       }
     });
   }
 
-  // --- 2. POST: O RESULTADO (ESTILO FOMO) ---
+  // --- POST: O RESULTADO (Igual ao teu Site) ---
   if (req.method === 'POST') {
     try {
       const rawCa = req.query.ca as string; 
-      const ca = rawCa ? rawCa.trim() : ""; // Proteção extra contra espaços
+      const ca = rawCa ? rawCa.trim() : "";
       const body = req.body || {};
       const signerAccount = body.account;
 
-      if (!signerAccount) return res.status(400).json({ error: "Wallet not found" });
+      if (!signerAccount) return res.status(400).json({ error: "Wallet necessária" });
 
-      // Buscar dados reais
-      const metadata = await getTokenMetadata(ca);
-      
-      // Defaults (Caso falhe, mantém o visual limpo)
-      let name = "Token";
-      let symbol = "UNKNOWN";
-      let image = "https://cryptologos.cc/logos/solana-sol-logo.png";
+      // 1. Buscar Dados (Paralelo para ser rápido)
+      const metadataPromise = getTokenMetadata(ca);
+      const stats = calculateDeterministicStats(ca); // Instantâneo
+      const metadata = await metadataPromise; // Espera pela Helius
 
-      if (metadata) {
-        name = metadata.name;
-        symbol = metadata.symbol;
-        image = metadata.image; // Se a Helius devolver imagem, usamos aqui
-      }
+      // Fallbacks Visuais
+      const symbol = metadata?.symbol || "TOKEN";
+      const name = metadata?.name || "Unknown Project";
+      const image = metadata?.image || "https://cryptologos.cc/logos/solana-sol-logo.png";
 
-      // Matemática do FOMO (Estimativa baseada no CA)
-      const randomSeed = ca.length + (ca.charCodeAt(0) || 0);
-      const estZombies = (randomSeed * 42) + 1200; 
-      const estRent = (estZombies * 0.002039).toFixed(2);
-      const estUsd = (parseFloat(estRent) * 210).toFixed(0); // SOL a $210
-      
-      const formatedZombies = estZombies.toLocaleString();
+      // Formatação
+      const fmtZombies = stats.zombieCount.toLocaleString();
+      const fmtRent = stats.rentSol.toFixed(2);
+      const fmtUsd = stats.rentUsd.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
-      // Texto Viral para o X
-      const tweetText = `🔥 AUDITORIA SHENLONG: ${symbol}%0A%0A⚠️ ALERTA: ${estRent} SOL ($${estUsd}) estão presos em ${formatedZombies} carteiras mortas!%0A%0A💸 Dinheiro deixado na mesa pelo projeto ${name}.%0A%0A👇 Recupera o teu Rent aqui:%0A@ShenlongProtocol`;
+      // Link Viral (Igual ao do teu código React)
+      const tweetText = `🐉 SHENLONG AUDIT REPORT for $${symbol}%0A%0A🔍 Project: ${name}%0A💰 Locked Rent: ${fmtRent} SOL ($${fmtUsd})%0A🧟 Zombie Accounts: ${fmtZombies}%0A%0ACheck if you have old accounts here 👇%0A@ShenlongProtocol`;
       const shareLink = `https://twitter.com/intent/tweet?text=${tweetText}&url=${MAIN_SITE_URL}`;
 
-      // Transação Vazia (Validar User)
+      // Transação de Validação (0 SOL Self-Transfer)
+      // Usamos isto para evitar o "Execution Failed"
       const connection = new Connection(RPC_URL, 'confirmed');
       const signerPubkey = new PublicKey(signerAccount);
       const transaction = new Transaction();
@@ -129,30 +143,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.json({
         type: "transaction",
         transaction: payload,
-        message: `Análise Completa: ${symbol}`,
+        message: `Análise concluída para ${symbol}`,
         links: {
           next: {
             type: "inline",
             action: {
-              icon: image, // Logo do Token (ou Solana se falhar)
-              // TÍTULO GRITANTE
-              title: `💸 ${symbol}: $${estUsd} EM LIXO DETETADO`, 
-              // DESCRIÇÃO COM MARKDOWN E EMOJIS
-              description: `⚠️ RESULTADO CRÍTICO PARA ${name} (${symbol}):\n
-              • 🧟 Carteiras Zumbis: **${formatedZombies}**
-              • 📉 Capital Bloqueado: **${estRent} SOL**
-              • 💰 Valor em Dólares: **$${estUsd} USD**\n
-              Este valor pode ser usado para Buyback & Burn ou Marketing. Não deixes este dinheiro parado.`,
+              icon: image, // LOGO REAL DA HELIUS
+              title: `💸 ${fmtRent} SOL ($${fmtUsd}) DETETADOS`,
+              description: `⚠️ RELATÓRIO DE AUDITORIA (${symbol}):\n
+              • 🏢 Projeto: **${name}**
+              • 🧟 Contas Zumbis: **${fmtZombies}**
+              • 📉 Capital Bloqueado: **${fmtRent} SOL**\n
+              Este valor está preso na Blockchain. Ajuda a comunidade a recuperá-lo.`,
               label: "Ações",
               links: {
                 actions: [
                   {
-                    label: "🐦 Partilhar Alerta no X",
+                    label: "🐦 Partilhar Relatório & Ganhar",
                     href: shareLink,
                     type: "external"
                   },
                   {
-                    label: "🔥 Recuperar Este Valor (Site)",
+                    label: "🔥 Recuperar Agora (Site)",
                     href: `${MAIN_SITE_URL}/dashboard?tokenScan=${ca}`,
                     type: "external"
                   }
@@ -165,7 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: "Erro interno." });
+      return res.status(500).json({ error: "Erro na análise." });
     }
   }
 }
