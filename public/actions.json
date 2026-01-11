@@ -3,6 +3,10 @@
     {
       "pathPattern": "/scan",
       "apiPath": "/api/scan"
+    },
+    {
+      "pathPattern": "/token",
+      "apiPath": "/api/token"
     }
   ]
 }
