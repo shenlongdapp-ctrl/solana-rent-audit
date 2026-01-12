@@ -1,16 +1,26 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-// SEGURANÇA: Agora lê a chave do Vercel. Fallback para RPC público se falhar.
+// SEGURANÇA: Lê a chave do Vercel. Fallback para RPC público se falhar.
 const RPC_URL = process.env.HELIUS_RPC_URL || "https://api.mainnet-beta.solana.com";
+// AQUI: URL unificada
 const MAIN_SITE_URL = "https://shenlongdapp.xyz"; 
 const SOL_PRICE_ESTIMATE = 210;
 
 const DEMO_WALLET = "G473EkeR5gowVn8CRwTSDxd3Ychpa8oYNS2X5Vye5w6u";
 const maskAddr = (addr: string) => `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 
+// Helper para criar transação vazia rapidamente
+async function createEmptyTx(connection: Connection, signer: PublicKey) {
+  const transaction = new Transaction();
+  transaction.add(SystemProgram.transfer({ fromPubkey: signer, toPubkey: signer, lamports: 0 }));
+  transaction.feePayer = signer;
+  const { blockhash } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  return transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // 1. CORS HEADERS (CRÍTICO: Têm de estar sempre aqui)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Encoding, Accept-Encoding');
@@ -57,11 +67,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         targetPubkey = new PublicKey(targetAddress);
       } catch (e) {
-        // Se o endereço for inválido, não crasha, devolve erro limpo
         return res.json({
             type: "transaction",
             message: "Invalid Address",
-            // Retornamos uma transação vazia para não quebrar o fluxo do Dialect
             transaction: (await createEmptyTx(connection, signerPubkey)).toString('base64')
         });
       }
@@ -73,10 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let hasNetworkActivity = false;
 
       if (targetAddress === DEMO_WALLET) {
-        // Demo
         rentSol = 0.842; junkCount = 12; isDirty = true; hasNetworkActivity = true;
       } else {
-        // Real Scan (Limitado para velocidade)
         try {
           const accounts = await connection.getParsedTokenAccountsByOwner(targetPubkey, {
             programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
@@ -93,8 +99,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           rentSol = lamports / LAMPORTS_PER_SOL;
           if (junkCount > 0) isDirty = true;
 
-          // Check Rápido de Atividade (Sem parsing pesado)
-          // Apenas vemos se existem assinaturas recentes. Se sim, assumimos rede ativa.
           const signatures = await connection.getSignaturesForAddress(targetPubkey, { limit: 1 });
           if (signatures.length > 0) hasNetworkActivity = true;
 
@@ -106,8 +110,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const totalUsd = (rentSol * SOL_PRICE_ESTIMATE).toFixed(2);
 
       // --- 2. RELATÓRIO VISUAL ---
-      // Lógica: Se tem lixo OU atividade de rede numa carteira suja, é risco alto.
-      
       const targetLine = isDirty 
         ? `🔴 **Target (${maskAddr(targetAddress)}):** ${rentSol.toFixed(4)} SOL (Dirty)`
         : `🟢 **Target (${maskAddr(targetAddress)}):** Clean`;
@@ -127,7 +129,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : "https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png";
 
       // --- 3. TRANSAÇÃO (0 SOL) ---
-      // Helper function usada abaixo
       const payload = (await createEmptyTx(connection, signerPubkey)).toString('base64');
 
       return res.json({
@@ -158,18 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     } catch (error) {
       console.error(error);
-      // Resposta de erro compatível com CORS para não dar "Availability Unknown"
       return res.status(500).json({ error: "Internal Error" });
     }
   }
-}
-
-// Helper para criar transação vazia rapidamente
-async function createEmptyTx(connection: Connection, signer: PublicKey) {
-  const transaction = new Transaction();
-  transaction.add(SystemProgram.transfer({ fromPubkey: signer, toPubkey: signer, lamports: 0 }));
-  transaction.feePayer = signer;
-  const { blockhash } = await connection.getLatestBlockhash('confirmed');
-  transaction.recentBlockhash = blockhash;
-  return transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
 }
