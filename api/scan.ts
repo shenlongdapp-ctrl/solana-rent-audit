@@ -128,6 +128,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? "https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Warning.png"
         : "https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Symbols/Check%20Mark%20Button.png";
 
+      // --- TWEET LOGIC ---
+      const tweetText = isDirty
+        ? `🐉 I just found ${rentSol.toFixed(4)} SOL ($${totalUsd}) in dead rent hidden in my wallet!%0A%0A🛑 Don't let your SOL rot.%0A%0AScan & Reclaim here 👇%0A@ShenlongProtocol`
+        : `🐉 My wallet is Clean and Optimized by Shenlong AI!%0A%0A0 SOL wasted.%0A%0ACheck yours here 👇%0A@ShenlongProtocol`;
+      
+      const shareLink = `https://twitter.com/intent/tweet?text=${tweetText}&url=${MAIN_SITE_URL}`;
+
       // --- 3. TRANSAÇÃO (0 SOL) ---
       const payload = (await createEmptyTx(connection, signerPubkey)).toString('base64');
 
@@ -146,7 +153,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               links: {
                 actions: [
                   {
-                    label: "💰 Reclaim Rent",
+                    label: "🐦 Share Result",
+                    href: shareLink,
+                    type: "external"
+                  },
+                  {
+                    label: "🔥 Reclaim on App",
                     href: `${MAIN_SITE_URL}/dashboard?autoScan=${targetAddress}`,
                     type: "external"
                   }
